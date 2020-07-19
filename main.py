@@ -36,13 +36,13 @@ def get_port():
     else:
         return default_port
 
-def uav_thread_func(uav_id, ip, port):
-    sample_object = SampleUAV(uav_id, ip, port)
+def uav_thread_func(uav_id, ip, port, uav_number):
+    sample_object = SampleUAV(uav_id, ip, port, uav_number)
     sample_object.start_listening()
 
 def uav_controller_func(uav_number, ip, port):
     area_scan_object = AreaScanner(uav_number, ip, port)
-    area_scan_object.start()
+    area_scan_object.start_listening()
 
 if __name__ == '__main__':
     uav_number = get_uav_id()
@@ -50,10 +50,10 @@ if __name__ == '__main__':
     port = get_port()
     for uav_id in range(0, (int(uav_number) + 1)):
         if int(uav_id) == (int(uav_number)):
-            __ = threading.Thread(target=uav_controller_func, args=(uav_number, ip, port), name="UAV_Controller_Thread")
+            __ = threading.Thread(target=uav_controller_func, args=(int(uav_number), ip, port), name="UAV_Controller_Thread")
             __.start()
 
         else:    
             print("Thread UAV : ", uav_id)
-            _ = threading.Thread(target=uav_thread_func, args=(str(uav_id), ip, port), name="UAV_{}_Thread".format(uav_id))
+            _ = threading.Thread(target=uav_thread_func, args=(str(uav_id), ip, port, int(uav_number)), name="UAV_{}_Thread".format(uav_id))
             _.start()
