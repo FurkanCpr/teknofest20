@@ -38,6 +38,15 @@ class SampleUAV(BaseUAV): # child
         self.gps_noise_flag = self.uav_msg['uav_guide']['gps_noise_flag']
         self.dispatch = self.uav_msg['uav_guide']['dispatch']
         
+        if not self.sinif:
+            # iha sayisinin 9 ve 9 dan kucuk olmasi durumunda gecerli
+            if self.uav_id % 4 == 0:
+                self.sinif = 1
+            elif self.uav_id % 4 == 1:
+                self.sinif = 2
+            elif self.uav_id % 4 == 2:
+                self.sinif = 3
+
         if not self.dispatch:
             self.hazirlik = False # Hazirlik durumu bittiginde ( dispatch False ) hazirlik False olacak.
 
@@ -68,54 +77,53 @@ class SampleUAV(BaseUAV): # child
         pass
 
     def preparing(self):
-        # 1)lidere en yakin olan ihalar listenelecek + 
-        # 2)Bu ihalar 0'dan uav_number'a kadar sayilara atanacak
-        # 3)Sinif hesabi yapılacak
-        # 4)gidilecek nokta belirlenecek +
-        # 5)hareket +
-        print("Eski UAV ID : ", self.uav_id)
-        new_uav_id = self.are_scanner_object.read_list(self.uav_id, self.formation)
-        print("Yeni UAV ID : ", new_uav_id)
-        # yeni sinif degerleri atanacak + 
-        # self.sinif = new_uav_id
-        if self.sinif:
-            if self.formation == "arrow": 
-                if not self.target_position:
-                    u_b = self.uav_msg['uav_formation']['u_b']
-                    u_k = self.uav_msg['uav_formation']['u_k']
-                    a_b = self.uav_msg['uav_formation']['a_b']
-                    if not self.uav_id == 0:
-                        if self.uav_id % 2 == 0:
-                            exp_y = self.lider_info[1] + self.sinif*(u_b*math.sin(a_b))
-                        else:
-                            exp_y = self.lider_info[1] - self.sinif*(u_b*math.sin(a_b))
-                        exp_x = self.lider_info[0] + (u_k + (self.sinif*(u_b*math.cos(a_b))))
-                    else: # uav_id 0 iken
-                        exp_x = self.lider_info[0] + u_k
-                        exp_y = self.lider_info[1]
-
-                    self.target_position = [exp_x, exp_y, self.lider_info[2]]
+        if self.formation == "arrow": 
+            if not self.target_position:
+                u_b = self.uav_msg['uav_formation']['u_b']
+                u_k = self.uav_msg['uav_formation']['u_k']
+                a_b = self.uav_msg['uav_formation']['a_b']
+            
+                if (0 <= self.uav_id <= 3):
+                    exp_y = self.lider_info[1] + self.sinif*(u_b*math.sin(a_b))
+                    exp_x = self.lider_info[0] + (u_k + (self.sinif*(u_b*math.cos(a_b))))
                 
-                thresh = 70
-                dist = util.dist(self.target_position, self.pose)
-                x_speed = self.lider_info[5]
-                if dist < thresh: 
-                    x_speed = self.lider_info[5]
-                    self.send_move_cmd(x_speed, 0, self.lider_info[3], self.target_position[2])
+                elif (4 <= self.uav_id <= 7):
+                    exp_y = self.lider_info[1] - self.sinif*(u_b*math.sin(a_b))
+                    exp_x = self.lider_info[0] + (u_k + (self.sinif*(u_b*math.cos(a_b))))
+                
+                elif self.uav_id == 8:
+                    # En on 
+                    exp_x = self.lider_info[0] + u_k
+                    exp_y = self.lider_info[1]
+
+                self.target_position = [exp_x, exp_y, self.lider_info[2]]
+            
+            thresh = 70
+            dist = util.dist(self.target_position, self.pose)
+            x_speed = 48
+
+            if dist < thresh: 
+                # hedefe vardik
+                if x_speed > self.lider_info[5]:
+                    x_speed = x_speed * 0.3
                 
                 else:    
-                    dist = util.dist(self.target_position, self.pose)
-                    target_angle = math.atan2(self.target_position[0]-self.pose[0], -(self.target_position[1]-self.pose[1]))
-                    target_angle = math.degrees(target_angle)
-                    
-                    if dist > 100:
-                        x_speed = x_speed*1.5
-                    self.send_move_cmd(x_speed, 0, target_angle, self.target_position[2])
-            elif self.formation == "prism":
-                pass
-        else:
-            print("Sinif degeri atanmadi")
+                    x_speed = self.lider_info[5]
 
+                self.send_move_cmd(x_speed, 0, self.lider_info[3], self.target_position[2])
+            
+            else:    
+                dist = util.dist(self.target_position, self.pose)
+                target_angle = math.atan2(self.target_position[0]-self.pose[0], -(self.target_position[1]-self.pose[1]))
+                target_angle = math.degrees(target_angle)
+                
+                if dist > 100:
+                    x_speed = x_speed*1.2
+                self.send_move_cmd(x_speed, 0, target_angle, self.target_position[2])
+        
+        elif self.formation == "prism":
+            pass
+        
     def formasyon(self):
         print("Formasyon")
         thresh = 70

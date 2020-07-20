@@ -45,15 +45,18 @@ def uav_controller_func(uav_number, ip, port):
     area_scan_object.start_listening()
 
 if __name__ == '__main__':
+    import math
     uav_number = get_uav_id()
     ip = get_ip()
     port = get_port()
-    for uav_id in range(0, (int(uav_number) + 1)):
-        if int(uav_id) == (int(uav_number)):
-            __ = threading.Thread(target=uav_controller_func, args=(int(uav_number), ip, port), name="UAV_Controller_Thread")
-            __.start()
+    step = int(math.floor(int(uav_number) / 2))
+    i = 0
+    uav_id = 0
 
-        else:    
-            print("Thread UAV : ", uav_id)
-            _ = threading.Thread(target=uav_thread_func, args=(str(uav_id), ip, port, int(uav_number)), name="UAV_{}_Thread".format(uav_id))
-            _.start()
+    while i < step: 
+        _ = threading.Thread(target=uav_thread_func, args=(str(uav_id), ip, port, int(uav_number)), name="UAV_{}_Thread".format(uav_id)).start()
+        __ = threading.Thread(target=uav_thread_func, args=(str((uav_id + 4)), ip, port, int(uav_number)), name="UAV_{}_Thread".format(str(uav_id + 4))).start()       
+        i += 1
+        uav_id += 1
+    eight_uav = threading.Thread(target=uav_thread_func, args=("8", ip, port, int(uav_number)), name="UAV_{}_Thread".format("8")).start()   
+    print("Thread count : ", threading.enumerate())    
