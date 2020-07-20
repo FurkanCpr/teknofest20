@@ -15,6 +15,9 @@ class SampleUAV(BaseUAV): # child
         self.target_position = None
         self.hazirlik = True
         self.are_scanner_object = AreaScanner(self.uav_number, self.ip, self.port)
+        self.lider_eski_alt = 0
+        self.uav_eski_alt = 0
+        self.sinif_prism = False
         
     def act(self, uav_msg, formation): 
         # 1) Ucus modu belirlenmesi (Dispatch, Hazirlik, GPS noise)
@@ -39,16 +42,28 @@ class SampleUAV(BaseUAV): # child
         self.dispatch = self.uav_msg['uav_guide']['dispatch']
         
         if not self.sinif:
-            # iha sayisinin 9 ve 9 dan kucuk olmasi durumunda gecerli
-            if self.uav_id % 4 == 0:
-                self.sinif = 1
-            elif self.uav_id % 4 == 1:
-                self.sinif = 2
-            elif self.uav_id % 4 == 2:
-                self.sinif = 3
+            if self.uav_id == 8:
+                self.sinif = 0
+            else:    
+                if self.uav_id % 4 == 0:
+                    self.sinif = 1
+                elif self.uav_id % 4 == 1:
+                    self.sinif = 2
+                elif self.uav_id % 4 == 2:
+                    self.sinif = 3
+
+        if not self.sinif_prism:
+            print("PRISM ICIN SINIFLAR HESAPLANDI")
+            if self.uav_id == 8:
+                self.sinif_prism = 0
+            else:
+                if (self.uav_id % 4 == 0) or (self.uav_id % 4 == 1):
+                    self.sinif_prism = 1
+                elif (self.uav_id % 4 == 2) or (self.uav_id % 4 == 3):
+                    self.sinif_prism = 2
 
         if not self.dispatch:
-            self.hazirlik = False # Hazirlik durumu bittiginde ( dispatch False ) hazirlik False olacak.
+            self.hazirlik = False 
 
         if self.dispatch == False:
             self.hazirlik = False
@@ -61,7 +76,6 @@ class SampleUAV(BaseUAV): # child
                 self.exp_point_calc() # istenen noktada olup olmadigini belirler + o noktaya gitmek icin move_to_target calisir
 
             elif self.uav_msg['uav_formation']['type'] == "prism":
-                print("Prism Formasyon")
                 self.exp_point_calc()
 
         elif self.dispatch == True and self.hazirlik == True:
@@ -82,7 +96,8 @@ class SampleUAV(BaseUAV): # child
                 u_b = self.uav_msg['uav_formation']['u_b']
                 u_k = self.uav_msg['uav_formation']['u_k']
                 a_b = self.uav_msg['uav_formation']['a_b']
-            
+                print("uk =", u_k)
+                print("UAV_ID = ",self.uav_id)
                 if (0 <= self.uav_id <= 3):
                     exp_y = self.lider_info[1] + self.sinif*(u_b*math.sin(a_b))
                     exp_x = self.lider_info[0] + (u_k + (self.sinif*(u_b*math.cos(a_b))))
@@ -92,24 +107,68 @@ class SampleUAV(BaseUAV): # child
                     exp_x = self.lider_info[0] + (u_k + (self.sinif*(u_b*math.cos(a_b))))
                 
                 elif self.uav_id == 8:
-                    # En on 
                     exp_x = self.lider_info[0] + u_k
                     exp_y = self.lider_info[1]
 
                 self.target_position = [exp_x, exp_y, self.lider_info[2]]
-            
-            thresh = 70
-            dist = util.dist(self.target_position, self.pose)
-            x_speed = 48
 
-            if dist < thresh: 
-                # hedefe vardik
-                if x_speed > self.lider_info[5]:
-                    x_speed = x_speed * 0.3
+            self.target_position[2] = self.lider_info[2]
+            
+            dist = util.dist(self.target_position, self.pose)
+            x_speed = 12
+            thresh = 10
+
+            fark = self.lider_info[2] - self.lider_eski_alt 
+            self.lider_eski_alt = self.lider_info[2]
+
+            fark_uav = self.pose[2] - self.uav_eski_alt
+            self.uav_eski_alt = self.pose[2]
+
+            # print("UAV t1-t0 = {} --- ||| --- Lider t1-to = {} ---|||--- Altitude degeri = {}".format((fark_uav),(fark), (self.lider_info[2])))
+            if self.uav_id == 8:
+                print("U_k : 50 --- ||| --- Fark : {} --- ||| --- X_speed = {}".format((self.pose[0] - self.lider_info[0]), x_speed))
+            
+            if self.pose[0] < self.lider_info[0]:
+                print("Lider gecildi")
+                self.send_move_cmd(0, 0, self.lider_info[3], self.target_position[2])
+
+            else:
+                if dist < thresh: 
+                    print("Hedefe Varildi")
+                    print("HEDEFE VARILDI --- Fark : {} --- ||| --- X_speed = {}".format((self.pose[0] - self.lider_info[0]), x_speed))
+                    x_speed = 0
+                    print("HEDEFTE HIZ AZALIYOR X SPEED = ", x_speed)
+                    print("LIDERIN HIZI = ", self.lider_info[5])
+
+                    self.send_move_cmd(x_speed, 0, self.lider_info[3], 95.7)
                 
                 else:    
-                    x_speed = self.lider_info[5]
-
+                    dist = util.dist(self.target_position, self.pose)
+                    target_angle = math.atan2(self.target_position[0]-self.pose[0], -(self.target_position[1]-self.pose[1]))
+                    target_angle = math.degrees(target_angle)
+                    
+                    if dist > 100:
+                        x_speed = x_speed*1.2
+                    self.send_move_cmd(x_speed, 0, target_angle, 95.7)
+        
+        elif self.formation == "prism":
+            pass
+        
+    def formasyon(self):
+        if self.formation == "arrow":
+            print("FORMASYON KISMI ===== Fark : {} --- ".format((self.pose[0] - self.lider_info[0])))
+            print("LIDER DEGERLERI : ", self.lider_info)
+            print("UAV DEGERLERI : ", self.pose)
+            self.send_move_cmd(self.lider_info[5], self.lider_info[4], self.lider_info[3], self.lider_info[2])
+            
+        elif self.formation == "prism":
+            print("Prism Formation")
+            
+            thresh = 10
+            dist = util.dist(self.target_position, self.pose)
+            x_speed = self.lider_info[5]
+            if dist < thresh: 
+                x_speed = self.lider_info[5]
                 self.send_move_cmd(x_speed, 0, self.lider_info[3], self.target_position[2])
             
             else:    
@@ -120,27 +179,6 @@ class SampleUAV(BaseUAV): # child
                 if dist > 100:
                     x_speed = x_speed*1.2
                 self.send_move_cmd(x_speed, 0, target_angle, self.target_position[2])
-        
-        elif self.formation == "prism":
-            pass
-        
-    def formasyon(self):
-        print("Formasyon")
-        thresh = 70
-        dist = util.dist(self.target_position, self.pose)
-        x_speed = self.lider_info[5]
-        if dist < thresh: 
-            x_speed = self.lider_info[5]
-            self.send_move_cmd(x_speed, 0, self.lider_info[3], self.target_position[2])
-        
-        else:    
-            dist = util.dist(self.target_position, self.pose)
-            target_angle = math.atan2(self.target_position[0]-self.pose[0], -(self.target_position[1]-self.pose[1]))
-            target_angle = math.degrees(target_angle)
-            
-            if dist > 100:
-                x_speed = x_speed*1.5
-            self.send_move_cmd(x_speed, 0, target_angle, self.target_position[2])
 
     def area_scanner(self):
         # kendi uav id'me gore en yakinimdaki iha ile mesafem hesaplaniyor
@@ -151,7 +189,7 @@ class SampleUAV(BaseUAV): # child
             self.avoidance(near_uav_coordinates)
         self.communication()
         """
-        pass
+        return False
         
     def avoidance(self, near_uav_coordinates):    
         # alanin icinde iha var ise o ihannin konumundan uzak bir konuma gitme komutu uretecek
@@ -186,6 +224,7 @@ class SampleUAV(BaseUAV): # child
             a_b = self.uav_msg['uav_formation']['a_b']
             u_k = self.uav_msg['uav_formation']['u_k']
             a_k = self.uav_msg['uav_formation']['a_k']
+            self.a_k = a_k
 
             y_lider = self.lider_info[1]
             y_iha = self.pose[1]
@@ -210,35 +249,36 @@ class SampleUAV(BaseUAV): # child
             if self.area_scanner():
                 self.avoidance()
                 pass
+            print("Prizma icin noktalar hesaplaniyor")
 
             u_b = self.uav_msg['uav_formation']['u_b']
             u_k = self.uav_msg['uav_formation']['u_k']
             a_k = self.uav_msg['uav_formation']['a_k']
             y_lider = self.lider_info[1]
             y_iha = self.pose[1]
-            exp_x = self.lider_info[0] + (u_k + (self.sinif * u_b))
 
-            if self.uav_id == 0:
+            if self.uav_id == 8:
                 exp_z = self.lider_info[2]
-                exp_x = self.lider_info[0] + (u_k + (self.sinif * u_b))
+                exp_x = self.lider_info[0] + (u_k + (self.sinif_prism * u_b))
                 exp_y = self.lider_info[1]
-                self.target_position = [exp_x, exp_y, exp_z]
-            
-            else:
-                exp_x = self.lider_info[0] + (u_k + (self.sinif * u_b))
 
-                if (self.uav_id % 4 == 1) or (self.uav_id % 4 == 2): 
+                self.target_position = [exp_x, exp_y, exp_z]
+                self.move(self.hazirlik, self.dispatch, self.gps_noise_flag)
+                
+            else:
+                exp_x = self.lider_info[0] + (u_k + (self.sinif_prism * u_b))
+                if (self.uav_id == 1) or (self.uav_id == 5):
                     exp_z = self.lider_info[2] + (u_b / 2)
-                elif (self.uav_id % 4 == 0) or (self.uav_id % 4 == 3):
+                elif (self.uav_id == 0) or (self.uav_id == 4):
                     exp_z = self.lider_info[2] - (u_b / 2)
-                if self.uav_id % 2 == 0:
-                    exp_y = self.lider_info[1] + (u_b / 2)
-                elif self.uav_id % 2 == 1:
+                if (self.uav_id == 0) or (self.uav_id == 1): 
                     exp_y = self.lider_info[1] - (u_b / 2)
+                elif (self.uav_id == 4) or (self.uav_id == 5): 
+                    exp_y = self.lider_info[1] + (u_b / 2)
 
                 self.target_position = [exp_x, exp_y, exp_z]  
                 self.move(self.hazirlik, self.dispatch, self.gps_noise_flag)
-        
+            
     def move(self, hazirlik, dispatch, gps_noise_flag):
         if self.target_position is None:
             print("Baslangic")
@@ -248,12 +288,12 @@ class SampleUAV(BaseUAV): # child
                 self.preparing()
 
             if not dispatch:
-                print("Formasyon")
                 self.formasyon()
 
             if gps_noise_flag:
                 print("Bozuk GPS alani")
-                self.communication()
+                self.send_move_cmd(12, 0,-93.4, 95)
+                # self.communication()
                 # self.self.formation_setup_after_GPS()
 
             if dispatch and hazirlik == False:
